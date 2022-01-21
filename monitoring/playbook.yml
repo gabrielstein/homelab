@@ -1,0 +1,160 @@
+---
+
+- hosts: monitor
+  become: true
+
+  tasks:
+
+    - name: Gather the packager facts
+      package_facts:
+
+    - name: Install important packages to run prometheus and node-exporter
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ package }}"
+      when: "'python3-firewall' not in ansible_facts.packages"
+  
+    - name: makes sure /conf exists
+      file:
+        path: "{{ item }}"
+        state: directory
+        recurse: yes
+      with_items:
+        - "{{ conf_dir }}"
+        - "{{ data_dir }}"
+        - "{{ grafana_data_dir }}"
+      tags:
+        - dir
+        - conf
+        - templates
+        - data
+  
+    - name: change ownership of data dir
+      file:
+        path: "{{ data_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ owner_data }}"
+        group: "{{ group_data }}"
+      tags:
+        - perms
+        - dir
+        - data
+  
+    - name: change ownership of data dir
+      file:
+        path: "{{ grafana_data_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ grafana_owner }}"
+        group: root
+      tags:
+        - grafana
+        - dir
+        - data
+        
+    - name: template prometheus config
+      template:
+        src: etc/prometheus.yml
+        dest: "{{ conf_dir }}/prometheus.yml"
+      tags:
+        - templates
+        - prometheus
+        - conf
+  
+    - name: template blackbox config
+      template:
+        src: etc/blackbox.yml
+        dest: "{{ conf_dir }}/blackbox.yml"
+      tags:
+        - templates
+        - blackbox
+        - conf
+  
+    - name: container itself
+      docker_container:
+        name: prometheus
+        restart_policy: always
+        restart: yes
+        image: prom/prometheus
+        ports:
+          - "{{ service_port }}:9090/tcp"
+        volumes:
+          - "{{ conf_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml"
+          - "{{ data_dir }}:/prometheus"
+        entrypoint: 'prometheus --storage.tsdb.retention.time=365d --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus'
+      tags:
+        - container
+        - prometheus
+  
+    - name: prometheus black box exporter
+      docker_container:
+        name: blackbox
+        image: prom/blackbox-exporter:master        
+        restart_policy: always
+        restart: yes
+        privileged: yes
+        ports:
+          - "{{ blackbox_exporter_port}}:9115"
+        volumes:
+          - "{{ conf_dir }}:/config:ro"
+        command:
+          - '--config.file=/config/blackbox.yml'
+      tags:
+        - container
+        - blackbox
+  
+    - name: snmp exporter
+      docker_container:
+        name: snmp
+        image: prom/snmp-exporter
+        ports:
+          - "{{ snmp_exporter_port }}:9116/tcp"
+      tags:
+        - snmp
+        - blackbox
+  
+    - name: grafana container
+      docker_container:
+        name: grafana
+        restart_policy: always
+        image: grafana/grafana
+        ports:
+          - "{{ grafana_port }}:3000/tcp"
+        volumes:
+          - "{{ conf_dir }}/grafana:/var/lib/grafana"
+        env:
+          GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+      tags:
+        - grafana
+        - container
+  
+    - name: open firewall port
+      firewalld:
+        port: "{{ item }}"
+        permanent: yes
+        state: enabled
+      with_items:
+        - "{{ service_port }}/tcp"
+        - "{{ blackbox_exporter_port }}/tcp"
+        - "{{ snmp_exporter_port }}/tcp"
+        - "{{ grafana_port }}/tcp"
+      tags:
+        - firewall
+  
+    - name: restart firewall
+      shell: firewall-cmd --reload
+      tags:
+        - firewall
+        - restart
+  
+    - name: restart prometheus stack just in case
+      shell: "docker restart {{ item }}"
+      with_items:
+        - prometheus
+        - blackbox
+        - snmp
+        - grafana
+      tags:
+        - restart

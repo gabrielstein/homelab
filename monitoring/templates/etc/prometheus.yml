@@ -1,0 +1,116 @@
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 60s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+  scrape_timeout: 15s
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+      monitor: 'zueralabs-monitor'
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  # - "first.rules"
+  # - "second.rules"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+
+  - job_name: demo_docker
+    static_configs:
+      - targets:
+          - host.that.does.not.exist
+{% for host in machines %}
+{% if "docker" in host and host.docker == True %}
+          - {{ host.name }}:{{ docker_exporter_port }}
+{% endif %}
+{% endfor %}
+        
+  - job_name: demo_node
+    static_configs:
+      - targets:
+          - host.that.does.not.exist
+{% for host in machines %}
+{% if "node" in host and host.node == True %}
+          - {{ host.name }}:{{ node_exporter_port }}
+{% endif %}
+{% endfor %}
+          
+  - job_name: demo_web
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+        - http_satellite
+    static_configs:
+      - targets:
+          - http://host.does.not.exist.com
+{% for host in machines %}
+{% if "web" in host and host.web == True %}
+          - http://{{ host.name }}
+{% endif %}
+{% if "webs" in host and host.webs == True %}
+          - https://{{ host.name }}
+{% endif %}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: {{ blackbox_exporter_ip }}:{{ blackbox_exporter_port }}  # The blackbox exporter's real hostname:port.
+        
+  - job_name: demo_icmp
+    metrics_path: /probe
+    params:
+      module:
+        - icmp
+    static_configs:
+      - targets:
+          - host.that.does.not.exist
+{% for host in machines %}
+{% if "icmp" in host and host.icmp == True %}
+          - {{ host.name }}
+{% endif %}
+{% endfor %}          
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: {{ blackbox_exporter_ip }}:{{ blackbox_exporter_port }}  # The blackbox exporter's real hostname:port.
+
+  - job_name: demo_snmp
+    static_configs:
+      - targets:
+        - hosts.that.does.not.exist
+{% for host in machines %}
+{% if "snmp" in host and host.snmp == True %}
+          - {{ host.name }}
+{% endif %}
+{% endfor %}
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: {{ snmp_exporter_ip }}:{{ snmp_exporter_port }} # SNMP exporter real hostname:port.
+
+  - job_name: demo_kvm
+    static_configs:
+      - targets:
+          - hosts.that.does.not.exist
+{% for host in machines %}
+{% if "kvm" in host and host.kvm == True %}
+          - {{ host.name }}:{{ kvm_exporter_port }}
+{% endif %}
+{% endfor %}

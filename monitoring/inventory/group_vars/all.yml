@@ -1,0 +1,39 @@
+machines:
+  - name: 192.168.2.254
+    icmp: yes
+    snmp: yes
+    web: yes
+    docker: yes
+
+blackbox_exporter_ip: 192.168.2.254
+snmp_exporter_ip: 192.168.2.254
+
+# demoed services and exporters ports
+service_port: 9001
+blackbox_exporter_port: 9002
+snmp_exporter_port: 9003
+grafana_port: 9004
+
+# already existing ports
+node_exporter_port: 9100
+docker_exporter_port: 9323
+kvm_exporter_port: 9177
+
+# conf dirs and paths
+conf_dir: /conf
+data_dir: "{{ conf_dir }}/data"
+grafana_data_dir: "{{ conf_dir }}/grafana"
+
+grafana_owner: 472
+
+owner_data: prometheus
+group_data: prometheus
+
+package:
+  - python3-firewalld
+  - firewalld
+  - python3-docker
+  - docker.io
+  - vim
+  - tmux
+
